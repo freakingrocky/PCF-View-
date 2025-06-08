@@ -348,21 +348,24 @@ export class AttachmentGallery implements ComponentFramework.StandardControl<IIn
 
 		document.body.appendChild(this._modalContainer);
 
-		console.log("context", context);
+                console.log("context", context);
 
-		let curentRecord: ComponentFramework.EntityReference = {
-			id: (<any>context).page.entityId,
-			name: (<any>context).page.entityTypeName
-		}
+                let curentRecord: ComponentFramework.EntityReference = {
+                        id: (<any>context.parameters.RowGUID.raw),
+                        name: (<any>context.parameters.TableName.raw)
+                }
 
-		console.log("curentRecord", curentRecord);
+                const fileColumnName = (<any>context.parameters.FileColumnName.raw);
 
-		const pdfScript = document.createElement('script');
-		pdfScript.src = 'https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js';
+                console.log("curentRecord", curentRecord);
+                console.log("file column", fileColumnName);
 
-		document.body.appendChild(pdfScript);
+                const pdfScript = document.createElement('script');
+                pdfScript.src = 'https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js';
 
-		this.GetAttachments(curentRecord).then(result => this.CreateGallery(result));
+                document.body.appendChild(pdfScript);
+
+                this.GetFileFromColumn(curentRecord, fileColumnName).then(result => this.CreateGallery(result));
     }
 
     /**
@@ -429,6 +432,47 @@ export class AttachmentGallery implements ComponentFramework.StandardControl<IIn
         }
 
         return this._notes;
+    }
+
+    private async GetFileFromColumn(curentRecord: ComponentFramework.EntityReference, columnName: string): Promise<Attachment[]> {
+        console.log("GetFileFromColumn started");
+
+        const clientUrl = (<any>this._context).page && (<any>this._context).page.getClientUrl ? (<any>this._context).page.getClientUrl() : "";
+        const recordId = (<any>curentRecord.id).guid || curentRecord.id;
+        const requestUrl = `${clientUrl}/api/data/v9.2/${curentRecord.name}(${recordId})/${columnName}/$value`;
+
+        try {
+            const response = await fetch(requestUrl);
+            const blob = await response.blob();
+            const base64Data = await this.blobToBase64(blob);
+
+            let item: Attachment = {
+                id: recordId,
+                mimeType: blob.type,
+                noteText: "",
+                title: columnName,
+                filename: columnName,
+                documentBody: base64Data
+            };
+            this._notes.push(item);
+        } catch (error) {
+            console.error("ERROR RETRIEVING FILE COLUMN");
+            console.error(error);
+        }
+
+        return this._notes;
+    }
+
+    private blobToBase64(blob: Blob): Promise<string> {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                const dataUrl = reader.result as string;
+                resolve(dataUrl.split(',')[1]);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
     }
 
     private setPdfImage(body:string){
