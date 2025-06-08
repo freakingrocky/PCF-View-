@@ -1,6 +1,10 @@
 import {IInputs, IOutputs} from "./generated/ManifestTypes";
 import { saveAs } from 'file-saver';
 
+declare var XLSX: any;
+declare var agGrid: any;
+declare var mammoth: any;
+
 interface Attachment {
 	documentBody: string;
 	mimeType: string;
@@ -11,8 +15,10 @@ interface Attachment {
 }
 
 interface IModalState {
-	isOpen: boolean,
-	isPdfViewerOpen: boolean
+        isOpen: boolean,
+        isPdfViewerOpen: boolean,
+        isXlsxViewerOpen: boolean,
+        isDocxViewerOpen: boolean
 }
 
 interface IPdfState {
@@ -37,8 +43,10 @@ export class AttachmentGallery implements ComponentFramework.StandardControl<IIn
 	private _pdfCanvas: HTMLCanvasElement;
 	private pdfState: IPdfState;
 	private modalState: IModalState;
-	private _pdfViewerContainer: HTMLDivElement;
-	private _modalImageContainer: HTMLDivElement;
+        private _pdfViewerContainer: HTMLDivElement;
+        private _agGridContainer: HTMLDivElement;
+        private _docxViewerContainer: HTMLDivElement;
+        private _modalImageContainer: HTMLDivElement;
 	private _pdfPageInput: HTMLInputElement;
 	private _pdfTotalPages: HTMLSpanElement;
 	private _pdfPageControlsContainer: HTMLDivElement;
@@ -88,10 +96,12 @@ export class AttachmentGallery implements ComponentFramework.StandardControl<IIn
 		this._context.resources.getResource('img/pdf_icon.png',
 						this.setPdfImage.bind(this), this.showError.bind(this,"ERROR with PDF Image!"));
 
-		this.modalState = {
-			isOpen: false,
-			isPdfViewerOpen: false
-		}
+                this.modalState = {
+                        isOpen: false,
+                        isPdfViewerOpen: false,
+                        isXlsxViewerOpen: false,
+                        isDocxViewerOpen: false
+                }
 
 		this.pdfState = {
 			pdf: null,
@@ -325,8 +335,8 @@ export class AttachmentGallery implements ComponentFramework.StandardControl<IIn
 
 		//--------- create pdf viewer container
 
-		let pdfViewerContainer = document.createElement('div');
-		pdfViewerContainer.classList.add('dwc-hide');
+                let pdfViewerContainer = document.createElement('div');
+                pdfViewerContainer.classList.add('dwc-hide');
 
 		let canvasContainer = document.createElement('div');
 		canvasContainer.className = 'dwc-pdf-canvas-container';
@@ -337,11 +347,21 @@ export class AttachmentGallery implements ComponentFramework.StandardControl<IIn
 
 		canvasContainer.appendChild(this._pdfCanvas);
 
-		pdfViewerContainer.appendChild(canvasContainer);
+                pdfViewerContainer.appendChild(canvasContainer);
 
-		modalBody.appendChild(pdfViewerContainer);
+                modalBody.appendChild(pdfViewerContainer);
 
-		this._pdfViewerContainer = pdfViewerContainer;
+                this._pdfViewerContainer = pdfViewerContainer;
+
+                let gridContainer = document.createElement('div');
+                gridContainer.classList.add('dwc-hide','ag-theme-alpine','dwc-aggrid-container');
+                modalBody.appendChild(gridContainer);
+                this._agGridContainer = gridContainer;
+
+                let docxContainer = document.createElement('div');
+                docxContainer.classList.add('dwc-hide','dwc-docx-container');
+                modalBody.appendChild(docxContainer);
+                this._docxViewerContainer = docxContainer;
 
 		modalContent.appendChild(modalBody);
 		this._modalContainer.appendChild(modalContent);
@@ -362,8 +382,28 @@ export class AttachmentGallery implements ComponentFramework.StandardControl<IIn
 
                 const pdfScript = document.createElement('script');
                 pdfScript.src = 'https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js';
-
                 document.body.appendChild(pdfScript);
+
+                const agCss = document.createElement('link');
+                agCss.rel = 'stylesheet';
+                agCss.href = 'https://unpkg.com/ag-grid-community/styles/ag-grid.css';
+                document.head.appendChild(agCss);
+                const agTheme = document.createElement('link');
+                agTheme.rel = 'stylesheet';
+                agTheme.href = 'https://unpkg.com/ag-grid-community/styles/ag-theme-alpine.css';
+                document.head.appendChild(agTheme);
+
+                const xlsxScript = document.createElement('script');
+                xlsxScript.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+                document.body.appendChild(xlsxScript);
+
+                const agGridScript = document.createElement('script');
+                agGridScript.src = 'https://unpkg.com/ag-grid-community/dist/ag-grid-community.min.noStyle.js';
+                document.body.appendChild(agGridScript);
+
+                const mammothScript = document.createElement('script');
+                mammothScript.src = 'https://cdn.jsdelivr.net/npm/mammoth@1.4.17/dist/browser/mammoth.browser.min.js';
+                document.body.appendChild(mammothScript);
 
                 this.GetFileFromColumn(curentRecord, fileColumnName).then(result => this.CreateGallery(result));
     }
@@ -480,7 +520,9 @@ export class AttachmentGallery implements ComponentFramework.StandardControl<IIn
     }
 
     private showError(text:string){
-        console.error("ERROR:", text);
+        const msg = "Seems like something went wrong, please download instead. We're sorry, this is currently a BETA feature. We have noted this error down, our developers are hard at work looking into this.\n\nThank you for your understanding,\nTeam Connecto";
+        console.error(msg, text);
+        alert(msg);
     }
 
     private CreateGallery(result: Attachment[]): any {
@@ -514,20 +556,24 @@ export class AttachmentGallery implements ComponentFramework.StandardControl<IIn
     }
 
     private setModalImage(note: Attachment) {
-        let isAttachmentPdf = note.mimeType.indexOf('pdf') != -1;
+        const mime = note.mimeType.toLowerCase();
+        const isPdf = mime.indexOf('pdf') !== -1;
+        const isXlsx = mime.indexOf('spreadsheet') !== -1 || note.filename.endsWith('.xlsx');
+        const isDocx = mime.indexOf('word') !== -1 || note.filename.endsWith('.docx');
 
-        if (this.modalState.isOpen && !this.modalState.isPdfViewerOpen && isAttachmentPdf) {
+        if (isPdf) {
             this.togglePdfViwer(true);
             this.setPdfViewer(note);
+        } else if (isXlsx) {
+            this.toggleGridViewer(true);
+            this.setXlsxGrid(note);
+        } else if (isDocx) {
+            this.toggleDocxViewer(true);
+            this.setDocxContent(note);
         } else {
-            if (this.modalState.isOpen && this.modalState.isPdfViewerOpen && isAttachmentPdf) {
-                this.setPdfViewer(note);
-            } else {
-                if (this.modalState.isOpen && this.modalState.isPdfViewerOpen && !isAttachmentPdf) {
-                    this.togglePdfViwer(false);
-                }
-                this._modalImage.src = this._previewImg.src;
-            }
+            this.hideAllViewers();
+            this._imageViewerContainer.classList.remove('dwc-hide');
+            this._modalImage.src = this._previewImg.src;
         }
     }
 
@@ -536,9 +582,10 @@ export class AttachmentGallery implements ComponentFramework.StandardControl<IIn
         if (currentNoteNumber < 0) { currentNoteNumber = this._notes.length - 1 }
         let currentNote = this._notes[currentNoteNumber];
 
-        let isAttachmentPdf = currentNote.mimeType.indexOf('pdf') != -1;
+        const mime = currentNote.mimeType.toLowerCase();
+        const isSpecial = mime.indexOf('pdf') !== -1 || mime.indexOf('spreadsheet') !== -1 || mime.indexOf('word') !== -1 || currentNote.filename.endsWith('.xlsx') || currentNote.filename.endsWith('.docx');
 
-        this._previewImg.src = !isAttachmentPdf
+        this._previewImg.src = !isSpecial
             ? this.generateImageSrcUrl(currentNote.mimeType, currentNote.documentBody)
             : this.pdfImageSrc;
 
@@ -628,18 +675,55 @@ export class AttachmentGallery implements ComponentFramework.StandardControl<IIn
 
     private togglePdfViwer(visible: boolean): void {
         if (visible) {
+            this.hideAllViewers();
             this._pdfViewerContainer.classList.remove("dwc-hide");
             this._pdfPageControlsContainer.classList.remove("dwc-hide");
-            this._imageViewerContainer.classList.add("dwc-hide");
             this._modalContentContainer.classList.add('dwc-overflow');
             this.modalState.isPdfViewerOpen = true;
         } else {
             this._pdfViewerContainer.classList.add("dwc-hide");
             this._pdfPageControlsContainer.classList.add("dwc-hide");
             this._imageViewerContainer.classList.remove("dwc-hide");
-            this._modalContentContainer.classList.remove('dwc-overflow');
             this.modalState.isPdfViewerOpen = false;
         }
+    }
+
+    private toggleGridViewer(visible: boolean): void {
+        if (visible) {
+            this.hideAllViewers();
+            this._agGridContainer.classList.remove("dwc-hide");
+            this._modalContentContainer.classList.add('dwc-overflow');
+            this.modalState.isXlsxViewerOpen = true;
+        } else {
+            this._agGridContainer.classList.add("dwc-hide");
+            this.modalState.isXlsxViewerOpen = false;
+            this._imageViewerContainer.classList.remove("dwc-hide");
+        }
+    }
+
+    private toggleDocxViewer(visible: boolean): void {
+        if (visible) {
+            this.hideAllViewers();
+            this._docxViewerContainer.classList.remove("dwc-hide");
+            this._modalContentContainer.classList.add('dwc-overflow');
+            this.modalState.isDocxViewerOpen = true;
+        } else {
+            this._docxViewerContainer.classList.add("dwc-hide");
+            this.modalState.isDocxViewerOpen = false;
+            this._imageViewerContainer.classList.remove("dwc-hide");
+        }
+    }
+
+    private hideAllViewers(): void {
+        this._pdfViewerContainer.classList.add("dwc-hide");
+        this._agGridContainer.classList.add("dwc-hide");
+        this._docxViewerContainer.classList.add("dwc-hide");
+        this._imageViewerContainer.classList.add("dwc-hide");
+        this._pdfPageControlsContainer.classList.add("dwc-hide");
+        this.modalState.isPdfViewerOpen = false;
+        this.modalState.isXlsxViewerOpen = false;
+        this.modalState.isDocxViewerOpen = false;
+        this._modalContentContainer.classList.remove('dwc-overflow');
     }
 
     private setPdfPage(event: KeyboardEvent): void {
@@ -678,6 +762,41 @@ export class AttachmentGallery implements ComponentFramework.StandardControl<IIn
         if (this.pdfState.pdf == null) return;
         this.pdfState.zoom += zoomChange;
         this.pdfRender();
+    }
+
+    //=========== XLSX LOGIC
+    private setXlsxGrid(xlsxItem: Attachment): void {
+        const binary = atob(xlsxItem.documentBody);
+        const len = binary.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+            bytes[i] = binary.charCodeAt(i);
+        }
+        const workbook = XLSX.read(bytes, { type: 'array' });
+        const sheetName = workbook.SheetNames[0];
+        const sheet = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1 });
+        if (sheet.length === 0) return;
+        const columnDefs: any[] = sheet[0].map((h: string, i: number) => ({ headerName: h || `Column ${i+1}`, field: `c${i}` }));
+        const rowData = sheet.slice(1).map((row: any[]) => {
+            const obj: any = {};
+            columnDefs.forEach((c, idx) => { obj[c.field] = row[idx]; });
+            return obj;
+        });
+        this._agGridContainer.innerHTML = '';
+        // @ts-ignore
+        new agGrid.Grid(this._agGridContainer, { columnDefs, rowData, defaultColDef: { flex: 1, resizable: true } });
+    }
+
+    //=========== DOCX LOGIC
+    private async setDocxContent(docxItem: Attachment) {
+        const blob = this.b64toBlob(docxItem.documentBody, docxItem.mimeType, 512);
+        const arrayBuffer = await blob.arrayBuffer();
+        // @ts-ignore
+        mammoth.convertToHtml({ arrayBuffer }).then((result: any) => {
+            this._docxViewerContainer.innerHTML = result.value;
+        }).catch(() => {
+            this.showError('DOCX RENDER ERROR');
+        });
     }
 
     //---------- END PDF LOGIC

@@ -229,3 +229,14 @@
         opacity: 1
     }
 }
+
+.dwc-aggrid-container {
+    width: 100%;
+    height: 400px;
+}
+
+.dwc-docx-container {
+    width: 100%;
+    overflow: auto;
+    padding: 10px;
+}
