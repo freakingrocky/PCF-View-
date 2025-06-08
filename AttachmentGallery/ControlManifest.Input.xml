@@ -18,7 +18,9 @@
       -->
     </external-service-usage>
     <!-- property node identifies a specific, configurable piece of data that the control expects from CDS -->
-    <property name="PlaceHolder" display-name-key="PlaceHolder" description-key="PlaceHolder for gallery" of-type="SingleLine.Text" usage="bound" required="true" />
+      <property name="TableName" display-name-key="Table Name" description-key="Name of the table" of-type="SingleLine.Text" usage="bound" required="true" />
+      <property name="RowGUID" display-name-key="Row GUID" description-key="Record identifier" of-type="SingleLine.Text" usage="bound" required="true" />
+      <property name="FileColumnName" display-name-key="File Column Name" description-key="Schema name of the file column" of-type="SingleLine.Text" usage="bound" required="true" />
     <!--
       Property node's of-type attribute can be of-type-group attribute.
       Example:
